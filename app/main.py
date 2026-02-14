@@ -1,4 +1,3 @@
-from django import db
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from .database import init_db
