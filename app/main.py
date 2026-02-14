@@ -13,6 +13,15 @@ from .tmdb import get_person_imdb_url
 from datetime import datetime
 from collections import defaultdict, OrderedDict
 from fastapi import Query
+from sqlalchemy.orm import Session
+from fastapi import Depends
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 def stars(avg):
     if avg is None:
@@ -29,41 +38,16 @@ app = FastAPI()
 
 templates = Jinja2Templates(directory="app/templates")
 
-FAMILY_MEMBERS = [
-    "Julian",
-    "Cata",
-    "Leo",
-    "Marco",
-    "Sofi",
-    "Chata",
-    "Lety",
-    "Guero",
-    "Roci",
-    "Pepe",
-    "Mau",
-    "Coqui",
-    "Lalo",
-    "Rafa",
-    "Luly",
-]
-
-
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request, q: str = "", sort: str = "rating"):
-    db = SessionLocal()
-
-    # Movie of the Week
+def home(request: Request, q: str = "", sort: str = "rating", db: Session = Depends(get_db)):
     weekly_movie = db.query(Movie).filter(Movie.status == "weekly").first()
 
     weekly_details = None
     director = None
     if weekly_movie and weekly_movie.tmdb_id:
         weekly_details = get_movie_details(weekly_movie.tmdb_id)
-        # if you already compute director elsewhere, keep your existing method
-        # director = get_director(weekly_movie.tmdb_id)
 
-    # Only show history from "seen"
     seen_movies = db.query(Movie).filter(Movie.status == "seen").all()
 
     movie_data = []
@@ -71,7 +55,6 @@ def home(request: Request, q: str = "", sort: str = "rating"):
     top_average = -1
 
     for movie in seen_movies:
-        # Search filter
         if q and q.lower() not in (movie.title or "").lower():
             continue
 
@@ -84,13 +67,8 @@ def home(request: Request, q: str = "", sort: str = "rating"):
 
         details = get_movie_details(movie.tmdb_id) if movie.tmdb_id else None
 
-        movie_data.append({
-            "movie": movie,
-            "average": avg,     # numeric for home cards
-            "details": details
-        })
+        movie_data.append({"movie": movie, "average": avg, "details": details})
 
-    # Sorting
     if sort == "date":
         movie_data.sort(key=lambda x: x["movie"].date_watched or "", reverse=True)
     else:
@@ -108,7 +86,7 @@ def home(request: Request, q: str = "", sort: str = "rating"):
             "top_average": top_average,
             "sort": sort,
             "q": q,
-        }
+        },
     )
 
 
@@ -116,31 +94,25 @@ def home(request: Request, q: str = "", sort: str = "rating"):
 
 
 
-@app.post("/add_movie")
-def add_movie(title: str = Form(...), date_watched: str = Form(...)):
-    db = SessionLocal()
 
+@app.post("/add_movie")
+def add_movie(title: str = Form(...), date_watched: str = Form(...), db: Session = Depends(get_db)):
     movie = Movie(title=title, date_watched=date_watched)
     db.add(movie)
     db.commit()
-
     return RedirectResponse(url="/", status_code=303)
 
+
 @app.get("/movie/{movie_id}", response_class=HTMLResponse)
-def movie_detail(movie_id: int, request: Request):
-    db = SessionLocal()
-
+def movie_detail(movie_id: int, request: Request, db: Session = Depends(get_db)):
     movie = db.query(Movie).filter(Movie.id == movie_id).first()
-    movie_details = None
-
-    if movie and movie.tmdb_id:
-        movie_details = get_movie_details(movie.tmdb_id)
+    movie_details = get_movie_details(movie.tmdb_id) if (movie and movie.tmdb_id) else None
 
     director = None
     director_id = None
     top_cast = []
 
-    if movie_details and "credits" in movie_details:
+    if movie_details and movie_details.get("credits"):
         crew = movie_details["credits"].get("crew", [])
         for c in crew:
             if c.get("job") == "Director":
@@ -148,40 +120,28 @@ def movie_detail(movie_id: int, request: Request):
                 director_id = c.get("id")
                 break
 
-    # first 5 cast members
-    top_cast = []
-
-    if movie_details and movie_details.get("credits"):
         cast = movie_details["credits"].get("cast", [])
-
         seen_ids = set()
         for a in cast:
             pid = a.get("id")
-            if not pid:
-                continue
-            if pid in seen_ids:
+            if not pid or pid in seen_ids:
                 continue
             seen_ids.add(pid)
             top_cast.append(a)
             if len(top_cast) == 5:
                 break
 
-
-
     ratings = db.query(Rating).filter(Rating.movie_id == movie_id).all()
 
     avg_rating = None
     highest_rating = None
     lowest_rating = None
-
     if ratings:
-        avg_rating = round(
-            sum(r.score for r in ratings) / len(ratings),
-            2
-        )
-
+        avg_rating = round(sum(r.score for r in ratings) / len(ratings), 2)
         highest_rating = max(ratings, key=lambda r: r.score)
         lowest_rating = min(ratings, key=lambda r: r.score)
+
+    members = db.query(FamilyMember).order_by(FamilyMember.name).all()
 
     return templates.TemplateResponse(
         "movie.html",
@@ -192,14 +152,14 @@ def movie_detail(movie_id: int, request: Request):
             "avg_rating": avg_rating,
             "highest_rating": highest_rating,
             "lowest_rating": lowest_rating,
-            "members": FAMILY_MEMBERS,
+            "members": members,
             "movie_details": movie_details,
             "director": director,
             "director_id": director_id,
             "top_cast": top_cast,
-
-        }
+        },
     )
+
 
 
 from fastapi.responses import RedirectResponse
@@ -208,26 +168,23 @@ from fastapi.responses import RedirectResponse
 def rate_movie(
     movie_id: int,
     member_name: str = Form(...),
-    score: float = Form(...)
+    score: float = Form(...),
+    db: Session = Depends(get_db),
 ):
-    db = SessionLocal()
-
     movie = db.query(Movie).filter(Movie.id == movie_id).first()
     if not movie:
         return RedirectResponse(url="/", status_code=303)
 
-    # lock if not weekly
     if movie.status != "weekly":
         return RedirectResponse(url=f"/movie/{movie_id}", status_code=303)
 
-    # prevent duplicate rating by same member
     existing = db.query(Rating).filter(
         Rating.movie_id == movie_id,
         Rating.member_name == member_name
     ).first()
 
     if existing:
-        existing.score = score  # update instead of blocking
+        existing.score = score
     else:
         db.add(Rating(movie_id=movie_id, member_name=member_name, score=score))
 
@@ -237,17 +194,14 @@ def rate_movie(
 
 
 
-@app.get("/admin", response_class=HTMLResponse)
-def admin_page(request: Request, q: str = "", status: str = "all", sort: str = "date_desc"):
-    db = SessionLocal()
 
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page(request: Request, q: str = "", status: str = "all", sort: str = "date_desc", db: Session = Depends(get_db)):
     members = db.query(FamilyMember).order_by(FamilyMember.name).all()
 
     query = db.query(Movie)
-
     if q:
         query = query.filter(Movie.title.ilike(f"%{q}%"))
-
     if status != "all":
         query = query.filter(Movie.status == status)
 
@@ -269,59 +223,43 @@ def admin_page(request: Request, q: str = "", status: str = "all", sort: str = "
 
 
 
-@app.get("/admin/search", response_class=HTMLResponse)
-def admin_search(request: Request, query: str):
-    results = search_movie(query)
 
-    return templates.TemplateResponse(
-        "admin_results.html",
-        {
-            "request": request,
-            "results": results
-        }
-    )
+@app.get("/admin/search", response_class=HTMLResponse)
+def admin_search(request: Request, query: str, db: Session = Depends(get_db)):
+    results = search_movie(query)
+    return templates.TemplateResponse("admin_results.html", {"request": request, "results": results})
+
 
 @app.post("/admin/add_movie_tmdb")
 def add_movie_tmdb(
     tmdb_id: int = Form(...),
     title: str = Form(...),
     date_watched: str = Form(...),
-    status: str = Form(...)
+    status: str = Form(...),
+    db: Session = Depends(get_db),
 ):
-    db = SessionLocal()
-
-    # prevent duplicates
     existing = db.query(Movie).filter(Movie.tmdb_id == tmdb_id).first()
     if existing:
         return RedirectResponse(url="/admin?error=MovieAlreadyExists", status_code=303)
 
-    # if setting weekly, demote any existing weekly
     if status == "weekly":
         current_weekly = db.query(Movie).filter(Movie.status == "weekly").first()
         if current_weekly:
             current_weekly.status = "seen"
-            db.commit()
 
-    new_movie = Movie(
-        tmdb_id=tmdb_id,
-        title=title,
-        date_watched=date_watched,
-        status=status
-    )
+    new_movie = Movie(tmdb_id=tmdb_id, title=title, date_watched=date_watched, status=status)
     db.add(new_movie)
     db.commit()
 
     return RedirectResponse(url="/", status_code=303)
 
-@app.post("/admin/delete_movie/{movie_id}")
-def delete_movie(movie_id: int):
-    db = SessionLocal()
 
+@app.post("/admin/delete_movie/{movie_id}")
+def delete_movie(movie_id: int, db: Session = Depends(get_db)):
     movie = db.query(Movie).filter(Movie.id == movie_id).first()
     if not movie:
         return RedirectResponse(url="/admin", status_code=303)
 
-    # delete ratings first (or add cascade)
     db.query(Rating).filter(Rating.movie_id == movie_id).delete()
     db.delete(movie)
     db.commit()
@@ -331,29 +269,26 @@ def delete_movie(movie_id: int):
 
 
 
-@app.get("/movie/{movie_id}/rate", response_class=HTMLResponse)
-def rate_page(movie_id: int, request: Request):
-    db = SessionLocal()
 
+@app.get("/movie/{movie_id}/rate", response_class=HTMLResponse)
+def rate_page(movie_id: int, request: Request, db: Session = Depends(get_db)):
     movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    members = db.query(FamilyMember).order_by(FamilyMember.name).all()
 
     return templates.TemplateResponse(
         "rate_movie.html",
-        {
-            "request": request,
-            "movie": movie,
-            "members": db.query(FamilyMember).order_by(FamilyMember.name).all()
-        }
+        {"request": request, "movie": movie, "members": members}
     )
 
+
 @app.post("/admin/add_member")
-def add_member(member_name: str = Form(...)):
-    db = SessionLocal()
+def add_member(member_name: str = Form(...), db: Session = Depends(get_db)):
     exists = db.query(FamilyMember).filter(FamilyMember.name == member_name).first()
     if not exists:
         db.add(FamilyMember(name=member_name))
         db.commit()
     return RedirectResponse("/admin", status_code=303)
+
 
 @app.get("/admin/confirm_movie", response_class=HTMLResponse)
 def admin_confirm_movie(
@@ -378,15 +313,13 @@ def admin_confirm_movie(
 def update_movie(
     movie_id: int,
     date_watched: str = Form(...),
-    status: str = Form(...)
+    status: str = Form(...),
+    db: Session = Depends(get_db),
 ):
-    db = SessionLocal()
-
     movie = db.query(Movie).filter(Movie.id == movie_id).first()
     if not movie:
         return RedirectResponse(url="/admin", status_code=303)
 
-    # If setting this movie as weekly, demote any other weekly movie
     if status == "weekly":
         other_weekly = db.query(Movie).filter(Movie.status == "weekly", Movie.id != movie_id).first()
         if other_weekly:
@@ -400,13 +333,11 @@ def update_movie(
 
 
 
-@app.get("/diary", response_class=HTMLResponse)
-def diary(request: Request, start: str = "", end: str = ""):
-    db = SessionLocal()
 
+@app.get("/diary", response_class=HTMLResponse)
+def diary(request: Request, start: str = "", end: str = "", db: Session = Depends(get_db)):
     query = db.query(Movie)
 
-    # filter by date range (Movie.date_watched is YYYY-MM-DD)
     if start:
         query = query.filter(Movie.date_watched >= start)
     if end:
@@ -419,21 +350,17 @@ def diary(request: Request, start: str = "", end: str = ""):
         ratings = db.query(Rating).filter(Rating.movie_id == movie.id).all()
         avg = round(sum(r.score for r in ratings) / len(ratings), 2) if ratings else None
 
-        details = None
-        if movie.tmdb_id:
-            details = get_movie_details(movie.tmdb_id)
+        details = get_movie_details(movie.tmdb_id) if movie.tmdb_id else None
 
         movie_data.append({
             "movie": movie,
             "average": avg,
-            "stars": stars(avg),  # your working helper
+            "stars": stars(avg),
             "details": details
         })
 
-    # sort by date desc for diary
     movie_data.sort(key=lambda x: x["movie"].date_watched or "", reverse=True)
 
-    # group by month/year
     groups = defaultdict(list)
     for item in movie_data:
         ds = item["movie"].date_watched
@@ -448,13 +375,9 @@ def diary(request: Request, start: str = "", end: str = ""):
 
     return templates.TemplateResponse(
         "diary.html",
-        {
-            "request": request,
-            "diary_groups": diary_groups,
-            "start": start,
-            "end": end
-        }
+        {"request": request, "diary_groups": diary_groups, "start": start, "end": end}
     )
+
 
 @app.get("/person/imdb/{person_id}")
 def person_imdb_redirect(person_id: int):
