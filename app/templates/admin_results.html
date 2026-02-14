@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>TMDB Results</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container-lg py-4">
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="mb-0">🔎 Resultados</h1>
+            <a href="/admin" class="btn btn-outline-light">⬅ Regresar</a>
+        </div>
+
+        <p class="text-muted mb-3">Haz click en una película para seleccionarla.</p>
+
+        <div class="row g-4 justify-content-start">
+            {% for movie in results %}
+            <div class="col-6 col-md-4 col-lg-3">
+                <form action="/admin/confirm_movie" method="get" class="h-100">
+                    <input type="hidden" name="tmdb_id" value="{{ movie.id }}">
+                    <input type="hidden" name="title" value="{{ movie.title }}">
+                    <input type="hidden" name="year" value="{{ movie.release_date[:4] if movie.release_date else '' }}">
+                    <input type="hidden" name="poster_path" value="{{ movie.poster_path or '' }}">
+
+                    <button type="submit" class="card h-100 shadow-sm movie-card">
+                        <div class="card-body d-flex flex-column align-items-center">
+
+                            <div class="poster-grid mt-3">
+                                <div class="poster-wrapper">
+                                    {% if movie.poster_path %}
+                                    <img src="https://image.tmdb.org/t/p/w500{{ movie.poster_path }}" alt="Poster">
+                                    {% else %}
+                                    <div class="poster-fallback d-flex align-items-center justify-content-center">
+                                        <span class="text-muted">No poster</span>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+
+
+                            <div class="movie-info text-center mt-3">
+                                <div class="movie-title clamp-2">{{ movie.title }}</div>
+                                <div class="movie-year text-muted">
+                                    {{ movie.release_date[:4] if movie.release_date else "N/A" }}
+                                </div>
+                            </div>
+
+                        </div>
+                    </button>
+                </form>
+            </div>
+
+            {% endfor %}
+        </div>
+
+    </div>
+</body>
+
+</html>
+
+<style>
+    body {
+        background-color: #14181c;
+        color: #f1f1f1;
+    }
+
+    .text-muted {
+        color: rgba(241, 241, 241, .65) !important;
+    }
+
+    /* Card */
+    .movie-card {
+        background: #1c2228;
+        border: 0;
+        border-radius: 14px;
+        padding: 0;
+        width: 100%;
+        cursor: pointer;
+        transition: transform .15s ease, box-shadow .15s ease;
+    }
+
+    .movie-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 28px rgba(0, 0, 0, .55);
+    }
+
+    .movie-card .card-body {
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    /* Width controller (NOT the ratio box) */
+    .poster-grid {
+        width: 100%;
+        max-width: 240px;
+    }
+
+    /* Ratio box (always same height) */
+    .poster-wrapper {
+        width: 100%;
+        overflow: hidden;
+        border-radius: 10px;
+        background-color: #11161b;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, .45);
+        position: relative;
+    }
+
+    .poster-wrapper::before {
+        content: "";
+        display: block;
+        padding-top: 150%;
+        /* 2:3 ratio */
+    }
+
+    .poster-wrapper>img,
+    .poster-wrapper>.poster-fallback {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    .poster-wrapper>img {
+        object-fit: cover;
+    }
+
+    .poster-fallback {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(241, 241, 241, .55);
+        font-weight: 600;
+        background:
+            radial-gradient(circle at 30% 30%, rgba(255, 255, 255, .06), transparent 45%),
+            linear-gradient(180deg, #1a2026, #0f1419);
+    }
+
+    /* Title + year */
+    .movie-info {
+        width: 100%;
+        min-height: 64px;
+        margin-top: 1rem;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .movie-title {
+        color: #e6edf3;
+        font-weight: 650;
+    }
+
+    .movie-year {
+        font-size: .9rem;
+    }
+
+    /* Keep titles from changing card height */
+    .clamp-2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        min-height: 2.6em;
+    }
+
+    @media (max-width: 768px) {
+        .poster-grid {
+            max-width: 170px;
+        }
+    }
+</style>

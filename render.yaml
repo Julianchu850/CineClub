@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: cineclub
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: TMDB_API_KEY
+        sync: false
+      - key: TMDB_LANGUAGE
+        value: es-MX
+      - key: TMDB_REGION
+        value: MX

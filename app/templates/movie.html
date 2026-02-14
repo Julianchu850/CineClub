@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>{{ movie.title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body>
+
+    <div class="container-lg py-4">
+
+
+
+        <!-- Movie Header -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+
+                <div class="row align-items-center">
+
+                    <!-- POSTER COLUMN -->
+                    <div class="col-auto">
+                        {% if movie_details and movie_details.poster_path %}
+                        <div class="poster-wrapper">
+                            <img src="https://image.tmdb.org/t/p/w500{{ movie_details.poster_path }}">
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- INFO COLUMN -->
+                    <div class="col-md">
+                        <div class="movie-meta">
+                            <h1>
+                                {{ movie.title }}
+                                {% if movie_details.release_date %}
+                                ({{ movie_details.release_date[:4] }})
+                                {% endif %}
+                            </h1>
+
+                            {% if movie_details.tagline %}
+                            <p><em>{{ movie_details.tagline }}</em></p>
+                            {% endif %}
+
+                            <p>
+                                {% if movie_details.runtime %}
+                                {{ movie_details.runtime }} mins •
+                                {% endif %}
+
+                                {% for g in movie_details.genres %}
+                                {{ g.name }}{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </p>
+
+                            {% if director %}
+                            <p>
+                                <strong>Director:</strong>
+                                {% if director_id %}
+                                <a class="person-link" href="/person/imdb/{{ director_id }}" target="_blank">{{ director
+                                    }}</a>
+                                {% else %}
+                                {{ director }}
+                                {% endif %}
+                            </p>
+                            {% endif %}
+
+
+                            {% if movie_details.overview %}
+                            <p>{{ movie_details.overview }}</p>
+                            {% endif %}
+                        </div>
+
+
+                        <!-- CAST -->
+                        <h4 class="mt-4">Elenco</h4>
+
+                        <div class="cast-scroll d-flex gap-3 overflow-auto pb-2">
+
+                            {% for actor in top_cast %}
+                            <a class="cast-link" href="/person/imdb/{{ actor.id }}" target="_blank">
+                                <div class="cast-card card shadow-sm" style="min-width:160px; max-width:160px;">
+
+                                    {% if actor.profile_path %}
+                                    <img class="card-img-top"
+                                        src="https://image.tmdb.org/t/p/w300{{ actor.profile_path }}">
+                                    {% endif %}
+
+                                    <div class="card-body p-2">
+                                        <small>
+                                            <strong>{{ actor.name }}</strong><br>
+                                            <span class="text-muted">{{ actor.character }}</span>
+                                        </small>
+                                    </div>
+
+                                </div>
+                            </a>
+                            {% endfor %}
+
+                        </div>
+
+                    </div>
+                </div>
+
+
+            </div>
+        </div>
+
+        {% if movie and movie.status == "weekly" %}
+        <a class="btn btn-premium mb-3" href="/movie/{{ movie.id }}/rate">
+            ⭐ Calificar esta película
+        </a>
+        {% else %}
+        <div class="alert alert-secondary mb-3"
+            style="background:#11161b;border:1px solid rgba(255,255,255,.08);color:#f1f1f1;">
+            Las calificaciones están bloqueadas - esta película ya no es la Película de la Semana.
+        </div>
+        {% endif %}
+
+
+
+
+        <!-- Ratings List -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0">Calificaciones</h4>
+
+            {% if avg_rating %}
+            <span class="badge avg-badge">⭐ {{ avg_rating }}</span>
+            {% endif %}
+        </div>
+
+        {% if ratings and ratings|length > 0 %}
+        <div class="ratings-list">
+
+            {% for rating in ratings %}
+            <div class="rating-row">
+                <div class="member-pill">{{ rating.member_name }}</div>
+                <div class="score-pill">⭐ {{ rating.score }}</div>
+            </div>
+            {% endfor %}
+
+        </div>
+
+        {% else %}
+        <p class="text-muted">No hay calificaciones aún.</p>
+        {% endif %}
+
+        {% if avg_rating %}
+        <div class="card mt-3 summary-card">
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <div class="summary-label">Más alta</div>
+                        <div class="summary-value">{{ highest_rating.member_name }} (⭐ {{ highest_rating.score }})</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="summary-label">Más baja</div>
+                        <div class="summary-value">{{ lowest_rating.member_name }} (⭐ {{ lowest_rating.score }})</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="summary-label">Promedio</div>
+                        <div class="summary-value">⭐ {{ avg_rating }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+
+        <p class="mt-3">
+            <a href="/" class="btn btn-outline-secondary">Volver al Inicio</a>
+        </p>
+
+    </div>
+
+
+
+</body>
+
+</html>
+
+<style>
+    body {
+        background-color: #14181c;
+        color: #f1f1f1;
+    }
+
+    .card {
+        background-color: #1c2228;
+        color: #f1f1f1;
+    }
+
+    .cast-scroll {
+        scrollbar-width: thin;
+    }
+
+    .cast-scroll::-webkit-scrollbar {
+        height: 8px;
+    }
+
+    .cast-scroll::-webkit-scrollbar-thumb {
+        background: #666;
+        border-radius: 10px;
+    }
+
+    .cast-card img {
+        height: 220px;
+        object-fit: cover;
+    }
+
+    .poster-wrapper {
+        width: 260px;
+        /* was 220px */
+        aspect-ratio: 2 / 3;
+        /* Letterboxd ratio */
+        overflow: hidden;
+        border-radius: 10px;
+        background-color: #1c2228;
+        flex-shrink: 0;
+    }
+
+
+    .poster-wrapper img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .poster-wrapper {
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    @media (max-width: 768px) {
+        .poster-wrapper {
+            width: 180px;
+        }
+    }
+
+    .poster-wrapper {
+        transform: translateY(-6px);
+    }
+
+    .movie-meta {
+        margin-top: 6px;
+    }
+
+    .poster-wrapper {
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+    }
+
+    .ratings-list {
+        display: flex;
+        flex-direction: column;
+        gap: .7rem;
+    }
+
+    .rating-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(255, 255, 255, .04);
+        border: 1px solid rgba(255, 255, 255, .06);
+        border-radius: 14px;
+        padding: .75rem .9rem;
+    }
+
+    .member-pill {
+        font-weight: 650;
+        color: #e6edf3;
+    }
+
+    .score-pill {
+        background: rgba(255, 209, 102, .14);
+        border: 1px solid rgba(255, 209, 102, .25);
+        color: #ffd166;
+        border-radius: 999px;
+        padding: .25rem .6rem;
+        font-weight: 700;
+    }
+
+    .avg-badge {
+        background: rgba(255, 209, 102, .18);
+        border: 1px solid rgba(255, 209, 102, .25);
+        color: #ffd166;
+        font-weight: 700;
+        border-radius: 999px;
+        padding: .45rem .7rem;
+    }
+
+    .summary-card {
+        background: linear-gradient(180deg, #1c2228 0%, #151a1f 100%);
+        border: 0;
+        border-radius: 14px;
+    }
+
+    .summary-label {
+        color: rgba(241, 241, 241, .65);
+        font-size: .85rem;
+    }
+
+    .summary-value {
+        font-weight: 650;
+    }
+
+    .btn-premium {
+        background: linear-gradient(135deg, #ffd166, #f4b942) !important;
+        color: #1b1f24 !important;
+        border: 0 !important;
+        border-radius: 999px !important;
+        padding: .55rem 1.2rem !important;
+        font-weight: 650 !important;
+        letter-spacing: .2px;
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, .35);
+        text-decoration: none !important;
+        transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+    }
+
+    .btn-premium:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 26px rgba(0, 0, 0, .45);
+        filter: brightness(1.05);
+        color: #111 !important;
+        text-decoration: none !important;
+    }
+
+    .btn-premium:focus {
+        outline: none;
+        box-shadow: 0 0 0 .25rem rgba(255, 209, 102, .12), 0 12px 26px rgba(0, 0, 0, .45);
+    }
+
+    .person-link {
+        color: #e6edf3;
+        text-decoration: none;
+        border-bottom: 1px solid rgba(255, 255, 255, .18);
+    }
+
+    .person-link:hover {
+        color: #fff;
+        border-bottom-color: rgba(255, 209, 102, .6);
+    }
+
+    .cast-link {
+        text-decoration: none;
+        color: inherit;
+        display: block;
+    }
+
+    .cast-link .cast-card {
+        transition: transform .15s ease, box-shadow .15s ease;
+    }
+
+    .cast-link:hover .cast-card {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 28px rgba(0, 0, 0, .55);
+    }
+</style>
